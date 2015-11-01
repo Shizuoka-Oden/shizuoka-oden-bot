@@ -1,4 +1,5 @@
 [
+  "hubot-nullpo",
   "hubot-diagnostics",
   "hubot-help",
   "hubot-heroku-keepalive",
