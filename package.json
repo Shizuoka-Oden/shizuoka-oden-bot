@@ -20,6 +20,7 @@
     "hubot-scripts": "^2.16.2",
     "hubot-shipit": "^0.2.0",
     "hubot-slack": "^3.4.1",
+    "lodash": "^3.10.1",
     "request": "^2.65.0"
   },
   "engines": {

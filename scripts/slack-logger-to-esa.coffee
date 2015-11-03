@@ -1,6 +1,7 @@
 # slackのログをesaに登録するボット。
 # お昼の１２時に動きます。
 
+_ = require('lodash');
 CronJob = require('cron').CronJob;
 request = require('request');
 
@@ -11,15 +12,16 @@ ESA_TEAM_NAME = process.env.HUBOT_ENV_ESA_TEAM_NAME
 
 # SLACK API
 SLACK_API_URL = "https://slack.com/api"
-SLACK_API_USERS_LIST_URL = SLACK_API_URL + "/users.list?token=" + SLACK_API_TOKEN
-SLACK_API_CHANNELS_LIST_URL    = SLACK_API_URL + "/channels.list?token="    + SLACK_API_TOKEN
-SLACK_API_CHANNELS_HISTORY_URL = SLACK_API_URL + "/channels.history?token=" + SLACK_API_TOKEN
+SLACK_API_USERS_LIST_URL = "#{SLACK_API_URL}/users.list?token=#{SLACK_API_TOKEN}"
+SLACK_API_CHANNELS_LIST_URL    = "#{SLACK_API_URL}/channels.list?token=#{SLACK_API_TOKEN}"
+SLACK_API_CHANNELS_HISTORY_URL = "#{SLACK_API_URL}/channels.history?token=#{SLACK_API_TOKEN}"
 
 # ESA API
 ESA_API_URL = "https://api.esa.io"
-ESA_API_POSTS_URL = ESA_API_URL + "/v1/teams/" + ESA_TEAM_NAME + "/posts?access_token=" + ESA_API_TOKEN
+ESA_API_POSTS_URL = "#{ESA_API_URL}/v1/teams/#{ESA_TEAM_NAME}/posts?access_token=#{ESA_API_TOKEN}"
 
 NOTICE_CHANNEL = "hubot-test"
+IGNORE_CHANNEL = "hubot-test"
 
 # 前日分のメッセージを取得するURLを取得する
 getChannelHistoryUrl = (channelId) -> 
@@ -29,7 +31,7 @@ getChannelHistoryUrl = (channelId) ->
   d = d.getDate()
   latest = new Date(y, m, d).getTime() / 1000
   oldest = latest - 60 * 60 * 24
-  SLACK_API_CHANNELS_HISTORY_URL + "&channel=" + channelId + "&oldest=" + oldest + "&latest=" + latest + "&count=1000&inclusive=1"
+  SLACK_API_CHANNELS_HISTORY_URL + "&channel=#{channelId}&oldest=#{oldest}&latest=#{latest}&count=1000&inclusive=1"
 
 # メッセージのtsから時間文字列(hh:mm:ss)を取得する
 getTimeStringFromMessageTs = (messageTs) -> 
@@ -42,9 +44,10 @@ notice = (robot, message) ->
   robot.messageRoom NOTICE_CHANNEL, message
 
 noticeAlert = (robot, body, message) ->
-  robot.messageRoom NOTICE_CHANNEL, "WARNING!! WARNING!! " +  message + "\r\n CODE :" + body.error + " MESSAGE :" + body.message
+  robot.messageRoom NOTICE_CHANNEL, "WARNING!! WARNING!! #{message} \r\n CODE : #{body.error}  MESSAGE : + #{body.message}"
 
-job = (robot) ->
+job = (robot, targetChannel) ->
+  notice(robot, "サクジツ ノ ログ サイシュヲ カイシ イタシマス。ピーガガガ。。。")
   console.log "job start"
 
   # ユーザ一覧を取得
@@ -69,20 +72,30 @@ job = (robot) ->
 
       # チャンネル毎のメッセージを取得
       channels.forEach (channel) ->
-        console.log "get log messages channel -> " + channel.name 
+        if channel.name == IGNORE_CHANNEL
+          console.log "#{channel.name} is ignore channnel"
+          return
+
+        if channel.name != targetChannel && targetChannel != "all"
+          console.log "not target #{targetChannel} channel -> #{channel.name}"
+          return
+
+        console.log "get log messages channel -> #{channel.name}"
         request.get getChannelHistoryUrl(channel.id), (error, response, body) ->
           if error || response.statusCode != 200
             noticeAlert(robot, body, "ログ シュトク シッパイ。")
             return
 
           # メッセージは降順で取得（ソートの指定はできなそう）なので昇順にする
-          messages = JSON.parse(body).messages
-          messages.sort((a, b) -> (a.ts > b.ts) ? -1 : 1)
+          messages = _.sortBy(JSON.parse(body).messages, 'ts');
+          if _.isEmpty(messages)
+            console.log "no messages. channel -> #{channel.name}"
+            return
 
           # slackログをesaのリクエスト形式に変換
           body_md = ""
           messages.forEach (message) ->
-            body_md += getTimeStringFromMessageTs(message.ts) + " (" + users[message.user] + ")\t" + message.text + "\r\n"
+            body_md += "#{getTimeStringFromMessageTs(message.ts)} (#{users[message.user]})\t#{message.text}\r\n"
 
           oneDayAgo = new Date
           oneDayAgo.setDate(oneDayAgo.getDate() - 1)
@@ -91,7 +104,7 @@ job = (robot) ->
                   "name" : oneDayAgo.getDate(),
                   "body_md" : body_md,
                   "tags" : ["slacklog"],
-                  "category" : "slacklog/" + channel.name + "/" + oneDayAgo.getFullYear() + "/" + (oneDayAgo.getMonth() + 1),
+                  "category" : "slacklog/#{channel.name}/#{oneDayAgo.getFullYear()}/#{oneDayAgo.getMonth() + 1}",
                   "wip" : true
                }
             }
@@ -99,20 +112,22 @@ job = (robot) ->
           # esaにslackログを登録する
           request {method : 'POST', uri : ESA_API_POSTS_URL, json : log}, (error, response, body) ->
             if error || response.statusCode != 201
-              console.log "faild to post log messages to esa. channel -> " + channel.name 
+              console.log "faild to post log messages to esa. channel -> #{channel.name}"
               console.log JSON.stringify(response)
-              noticeAlert(robot, body, "ログ トウロク シッパイ。" + channel.name)
+              noticeAlert robot, body, "ログ トウロク シッパイ。 #{channel.name}"
               return
-            console.log "post log messages to esa. channel -> " + channel.name 
+            console.log "post log messages to esa. channel -> #{channel.name}"
 
 module.exports = (robot) ->
 
-  robot.hear /slacklog$$/i, (msg) ->
-    notice(robot, "サクジツ ノ ログ サイシュヲ カイシ イタシマス。ピーガガガ。。。")
-    job(robot)
+  robot.hear /slacklog$/i, (msg) ->
+    job(robot, "all")
+
+  robot.hear /slacklog (.*)/i, (msg) ->
+    job(robot, msg.match[1])
 
   cron = new CronJob '0 0 12 * * *', () => 
-      job()
+      job(robot)
     ,
     null,
     false,
