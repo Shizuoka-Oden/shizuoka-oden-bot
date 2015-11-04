@@ -127,7 +127,7 @@ module.exports = (robot) ->
     job(robot, msg.match[1])
 
   cron = new CronJob '0 0 12 * * *', () => 
-      job(robot)
+      job(robot, "all")
     ,
     null,
     false,
