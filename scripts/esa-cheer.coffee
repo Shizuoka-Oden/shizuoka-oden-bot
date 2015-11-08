@@ -300,6 +300,7 @@ module.exports = (robot) ->
 
   robot.catchAll (res) ->
     r = new RegExp "(.*) (created|updated) (.*)", "i"
+    matches = res.message.text.match(r)
     if matches == null or matches.length == 0
       return
     res.send "お疲れ様！どんどんドーナッツ！どーんといこう！！\n" + res.random cheer
