@@ -298,5 +298,5 @@ module.exports = (robot) ->
     "地位になんの価値がある？てめえの小汚え口から出た地位が、どれほどオレを助けた？何も助かっちゃいねえ･･･オレを正気に戻したのはこいつの言葉だ!こいつの友達になってくれるという言葉だ！(パムーン, 金色のガッシュ!!)"
   ]
 
-  robot.hear /created|updated/i, (res) ->
+  robot.catchAll /created|updated/i, (res) ->
     res.send "お疲れ様！\n" + res.random cheer
